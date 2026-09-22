@@ -1,6 +1,6 @@
 # Cloudflare Workers 配置，线上已由deploy.yml接管，这里仅供本地测试
 name = "cf-server-monitor-v2"
-main = "src/index.js"
+main = "src/nq-entry.js"
 compatibility_date = "2024-12-01"
 compatibility_flags = ["nodejs_compat"]
 
