@@ -114,10 +114,25 @@
       :format-loss-value="formatLossValue"
       :is-ping-valid="isPingValid"
     />
+    <div v-if="server.nq_url" class="nq-report-row">
+      <span
+        class="nq-report-link"
+        role="link"
+        tabindex="0"
+        :title="nodeQualityTitle"
+        @click.stop.prevent="openNodeQuality"
+        @keydown.enter.stop.prevent="openNodeQuality"
+        @keydown.space.stop.prevent="openNodeQuality"
+      >
+        <span class="nq-report-mark">N</span>
+        <span>NQ</span>
+      </span>
+    </div>
   </router-link>
 </template>
 
 <script setup>
+import { computed } from 'vue'
 import OsIcon from './OsIcon.vue'
 import ServerLatencyPanel from './ServerLatencyPanel.vue'
 import { DEFAULT_SERVER_CARD_CONFIG, useServerCardData } from '../composables/useServerCardData'
@@ -136,6 +151,18 @@ const props = defineProps({
     default: ''
   }
 })
+
+const nodeQualityTitle = computed(() => {
+  const timestamp = Number(props.server?.nq_updated_at || 0)
+  if (!timestamp) return '打开最新 NodeQuality 报告'
+  return `NodeQuality · ${new Date(timestamp).toLocaleString()}`
+})
+
+function openNodeQuality() {
+  const url = String(props.server?.nq_url || '')
+  if (!/^https:\/\/(?:www\.)?nodequality\.com\/r\//i.test(url)) return
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
 
 const {
   trans,
@@ -174,3 +201,48 @@ const {
   formatBytes
 } = useServerCardData(props)
 </script>
+
+<style scoped>
+.nq-report-row {
+  display: flex;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.nq-report-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 24px;
+  padding: 2px 8px 2px 5px;
+  border: 1px solid rgba(16, 185, 129, 0.45);
+  border-radius: 5px;
+  background: rgba(16, 185, 129, 0.06);
+  color: inherit;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+  transition: transform .15s ease, border-color .15s ease, background .15s ease;
+}
+
+.nq-report-link:hover,
+.nq-report-link:focus-visible {
+  border-color: rgba(16, 185, 129, 0.8);
+  background: rgba(16, 185, 129, 0.13);
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.nq-report-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 3px;
+  background: linear-gradient(135deg, #34d399, #0ea5e9);
+  color: white;
+  font-size: 9px;
+  font-weight: 800;
+}
+</style>
