@@ -1,5 +1,7 @@
-import app from './index.js'
-export { MetricsBroadcaster } from './index.js'
+import app, { MetricsBroadcaster as BaseMetricsBroadcaster } from './index.js'
+
+// Wrangler 需要在 Worker 入口文件中直接看到 Durable Object class。
+export class MetricsBroadcaster extends BaseMetricsBroadcaster {}
 
 let nqSchemaReady = false
 
