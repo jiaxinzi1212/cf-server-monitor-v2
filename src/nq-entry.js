@@ -207,7 +207,9 @@ function jsonResponse(data, status = 200, headers = {}) {
 
 function normalizeReportUrl(value) {
   const url = String(value || '').trim()
-  if (!/^https:\/\/(?:www\.)?nodequality\.com\/r\/[A-Za-z0-9_-]+\/?$/i.test(url)) {
+  const isNodeQuality = /^https:\/\/(?:www\.)?nodequality\.com\/r\/[A-Za-z0-9_-]+\/?$/i.test(url)
+  const isIpQuality = /^https:\/\/report\.check\.place\/ip\/[A-Za-z0-9_-]+\.svg\/?$/i.test(url)
+  if (!isNodeQuality && !isIpQuality) {
     return ''
   }
   return url.replace(/\/$/, '')
@@ -239,7 +241,7 @@ async function handleNodeQualityReport(request, env) {
     return jsonResponse({ error: 'Invalid secret', code: 401 }, 401)
   }
   if (!reportUrl) {
-    return jsonResponse({ error: 'Invalid NodeQuality report URL', code: 400 }, 400)
+    return jsonResponse({ error: 'Invalid NodeQuality/IPQuality report URL', code: 400 }, 400)
   }
 
   await ensureNodeQualitySchema(env.DB)
