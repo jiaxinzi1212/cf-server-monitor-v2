@@ -125,7 +125,6 @@ const NQ_RUNTIME_SCRIPT = `<script data-cfsm-nq-runtime>
     const observer = new MutationObserver(queueRender)
     observer.observe(document.documentElement, { childList: true, subtree: true })
     refreshReports()
-    setInterval(refreshReports, 60_000)
   }
 
   if (document.readyState === 'loading') {
