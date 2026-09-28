@@ -24,7 +24,7 @@ const NQ_RUNTIME_SCRIPT = `<script data-cfsm-nq-runtime>
   function makeButton(server) {
     const link = document.createElement('a')
     link.className = BUTTON_CLASS
-    link.href = server.nq_url
+    link.href = '/api/nq-open?id=' + encodeURIComponent(server.id)
     link.target = '_blank'
     link.rel = 'noopener noreferrer'
     link.title = server.nq_updated_at
@@ -87,7 +87,7 @@ const NQ_RUNTIME_SCRIPT = `<script data-cfsm-nq-runtime>
         button = makeButton(server)
         row.appendChild(button)
       } else {
-        button.href = server.nq_url
+       button.href = '/api/nq-open?id=' + encodeURIComponent(server.id)
         button.title = server.nq_updated_at
           ? 'NodeQuality · ' + new Date(Number(server.nq_updated_at)).toLocaleString()
           : 'NodeQuality'
@@ -213,7 +213,152 @@ function normalizeReportUrl(value) {
   }
   return url.replace(/\/$/, '')
 }
+function nqRedirect(url) {
+  return new Response(null, {
+    status: 302,
+    headers: {
+      Location: url,
+      'Cache-Control': 'no-store'
+    }
+  })
+}
 
+function nqExpiredResponse() {
+  return new Response(
+    `<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NQ 报告已失效</title>
+<style>
+body{
+  margin:0;
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:#0b1020;
+  color:#e5e7eb;
+  font-family:system-ui,-apple-system,sans-serif;
+}
+.box{
+  width:min(520px,calc(100% - 40px));
+  padding:32px;
+  border:1px solid #334155;
+  border-radius:12px;
+  background:#111827;
+}
+h2{margin-top:0;color:#f87171}
+p{line-height:1.8;color:#cbd5e1}
+</style>
+</head>
+<body>
+<div class="box">
+<h2>NodeQuality 报告已失效</h2>
+<p>NodeQuality 已返回 Record not found。</p>
+<p>刷新监控页面后，该 NQ 按钮将不再显示。重新运行 NQ 后会自动恢复。</p>
+</div>
+</body>
+</html>`,
+    {
+      status: 410,
+      headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-store'
+      }
+    }
+  )
+}
+
+async function handleNodeQualityOpen(request, env) {
+  const url = new URL(request.url)
+  const serverId = String(url.searchParams.get('id') || '').trim()
+
+  if (!serverId) {
+    return new Response('Missing server id', {
+      status: 400,
+      headers: { 'Cache-Control': 'no-store' }
+    })
+  }
+
+  await ensureNodeQualitySchema(env.DB)
+
+  const report = await env.DB.prepare(`
+    SELECT id, report_url, tested_at
+    FROM nodequality_reports
+    WHERE server_id = ?
+    ORDER BY tested_at DESC, id DESC
+    LIMIT 1
+  `).bind(serverId).first()
+
+  if (!report || !report.report_url) {
+    return nqExpiredResponse()
+  }
+
+  const reportUrl = normalizeReportUrl(report.report_url)
+
+  if (!reportUrl) {
+    return nqExpiredResponse()
+  }
+
+  // IPQuality 直接打开，不走 NodeQuality 检查。
+  if (/^https:\/\/report\.check\.place\/ip\//i.test(reportUrl)) {
+    return nqRedirect(reportUrl)
+  }
+
+  const match = reportUrl.match(
+    /^https:\/\/(?:www\.)?nodequality\.com\/r\/([A-Za-z0-9_-]+)\/?$/i
+  )
+
+  if (!match) {
+    return nqRedirect(reportUrl)
+  }
+
+  const recordId = match[1]
+
+  try {
+    const upstream = await fetch(
+      `https://api.nodequality.com/api/v1/record/${recordId}`,
+      { headers: { Accept: 'application/json' } }
+    )
+
+    if (upstream.status === 404) {
+      const now = Date.now()
+
+      await env.DB.prepare(`
+        INSERT INTO nodequality_reports (
+          server_id,
+          report_url,
+          tested_at,
+          created_at
+        )
+        VALUES (?, '', ?, ?)
+      `).bind(serverId, now, now).run()
+
+      await env.DB.prepare(`
+        DELETE FROM nodequality_reports
+        WHERE server_id = ?
+          AND id NOT IN (
+            SELECT id
+            FROM nodequality_reports
+            WHERE server_id = ?
+            ORDER BY tested_at DESC, id DESC
+            LIMIT 24
+          )
+      `).bind(serverId, serverId).run()
+
+      return nqExpiredResponse()
+    }
+  } catch (error) {
+    console.warn(
+      '[NodeQuality] validation failed:',
+      error?.message || error
+    )
+  }
+
+  return nqRedirect(reportUrl)
+}
 function normalizeTestedAt(value) {
   const number = Number(value)
   if (!Number.isFinite(number) || number <= 0) return Date.now()
@@ -351,7 +496,9 @@ async function enrichDashboardResponse(response, env, path) {
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url)
-
+    if (request.method === 'GET' && url.pathname === '/api/nq-open') {
+  return handleNodeQualityOpen(request, env)
+}
     if (request.method === 'POST' && url.pathname === '/api/nq-report') {
       return handleNodeQualityReport(request, env)
     }
