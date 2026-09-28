@@ -285,7 +285,7 @@ async function handleNodeQualityOpen(request, env) {
   await ensureNodeQualitySchema(env.DB)
 
   const report = await env.DB.prepare(`
-    SELECT id, report_url, tested_at
+    SELECT report_url
     FROM nodequality_reports
     WHERE server_id = ?
     ORDER BY tested_at DESC, id DESC
@@ -295,6 +295,15 @@ async function handleNodeQualityOpen(request, env) {
   if (!report || !report.report_url) {
     return nqExpiredResponse()
   }
+
+  const reportUrl = normalizeReportUrl(report.report_url)
+
+  if (!reportUrl) {
+    return nqExpiredResponse()
+  }
+
+  return nqRedirect(reportUrl)
+}
 
   const reportUrl = normalizeReportUrl(report.report_url)
 
