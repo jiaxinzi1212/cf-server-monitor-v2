@@ -278,7 +278,9 @@ async function handleNodeQualityOpen(request, env) {
   if (!serverId) {
     return new Response('Missing server id', {
       status: 400,
-      headers: { 'Cache-Control': 'no-store' }
+      headers: {
+        'Cache-Control': 'no-store'
+      }
     })
   }
 
@@ -303,116 +305,6 @@ async function handleNodeQualityOpen(request, env) {
   }
 
   return nqRedirect(reportUrl)
-}
-
-  const reportUrl = normalizeReportUrl(report.report_url)
-
-  if (!reportUrl) {
-    return nqExpiredResponse()
-  }
-
-  // IPQuality 直接打开，不走 NodeQuality 检查。
-  if (/^https:\/\/report\.check\.place\/ip\//i.test(reportUrl)) {
-    return nqRedirect(reportUrl)
-  }
-
-  const match = reportUrl.match(
-    /^https:\/\/(?:www\.)?nodequality\.com\/r\/([A-Za-z0-9_-]+)\/?$/i
-  )
-
-  if (!match) {
-    return nqRedirect(reportUrl)
-  }
-
-  const recordId = match[1]
-
-try {
-const upstream = await fetch(
-  `https://api.nodequality.com/api/v1/record/${recordId}`,
-  {
-    headers: {
-      Accept: 'application/json',
-      'User-Agent': 'Mozilla/5.0',
-      'Origin': 'https://nodequality.com',
-      'Referer': 'https://nodequality.com/'
-    }
-  }
-)
-
-  const upstreamText = await upstream.text()
-
-  const recordNotFound =
-    upstream.status === 404 ||
-    /record\s+not\s+found/i.test(upstreamText)
-
-  if (recordNotFound) {
-    const now = Date.now()
-
-    await env.DB.prepare(`
-      INSERT INTO nodequality_reports (
-        server_id,
-        report_url,
-        tested_at,
-        created_at
-      )
-      VALUES (?, '', ?, ?)
-    `).bind(serverId, now, now).run()
-
-    await env.DB.prepare(`
-      DELETE FROM nodequality_reports
-      WHERE server_id = ?
-        AND id NOT IN (
-          SELECT id
-          FROM nodequality_reports
-          WHERE server_id = ?
-          ORDER BY tested_at DESC, id DESC
-          LIMIT 24
-        )
-    `).bind(serverId, serverId).run()
-
-    return nqExpiredResponse()
-  }
-
-  // NodeQuality API 返回其他异常时，不再跳到坏报告。
-  if (!upstream.ok) {
-    console.warn(
-      '[NodeQuality] validation returned:',
-      upstream.status,
-      upstreamText.slice(0, 200)
-    )
-
-    return new Response(
-      `NodeQuality 报告暂时无法验证，请稍后再试。上游状态：${upstream.status}`,
-      {
-        status: 502,
-        headers: {
-          'Content-Type': 'text/plain; charset=utf-8',
-          'Cache-Control': 'no-store'
-        }
-      }
-    )
-  }
-
-  // API 正常返回有效记录，才进入原报告。
-  return nqRedirect(reportUrl)
-
-} catch (error) {
-  console.warn(
-    '[NodeQuality] validation failed:',
-    error?.message || error
-  )
-
-  return new Response(
-    'NodeQuality 报告暂时无法验证，请稍后再试。',
-    {
-      status: 502,
-      headers: {
-        'Content-Type': 'text/plain; charset=utf-8',
-        'Cache-Control': 'no-store'
-      }
-    }
-  )
-}
 }
 function normalizeTestedAt(value) {
   const number = Number(value)
