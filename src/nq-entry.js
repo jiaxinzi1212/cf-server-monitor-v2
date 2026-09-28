@@ -318,15 +318,17 @@ async function handleNodeQualityOpen(request, env) {
   const recordId = match[1]
 
 try {
-  const upstream = await fetch(
-    `https://api.nodequality.com/api/v1/record/${recordId}`,
-    {
-      headers: {
-        Accept: 'application/json',
-        'User-Agent': 'Mozilla/5.0'
-      }
+const upstream = await fetch(
+  `https://api.nodequality.com/api/v1/record/${recordId}`,
+  {
+    headers: {
+      Accept: 'application/json',
+      'User-Agent': 'Mozilla/5.0',
+      'Origin': 'https://nodequality.com',
+      'Referer': 'https://nodequality.com/'
     }
-  )
+  }
+)
 
   const upstreamText = await upstream.text()
 
